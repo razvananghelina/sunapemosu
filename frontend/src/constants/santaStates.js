@@ -1,4 +1,7 @@
 export const SANTA_STATES = {
+  IDLE: 'idle',
+  CALLING: 'calling',
+  INTRO: 'intro',
   GREETING: 'greeting',
   LISTENING: 'listening',
   LAUGHING: 'laughing',
@@ -15,6 +18,9 @@ export const SANTA_STATES_LIST = Object.values(SANTA_STATES);
 
 // Mapare video pentru fiecare stare (placeholder pentru viitor)
 export const SANTA_VIDEOS = {
+  [SANTA_STATES.IDLE]: null,
+  [SANTA_STATES.CALLING]: null,
+  [SANTA_STATES.INTRO]: '/videos/intro.mp4',
   [SANTA_STATES.GREETING]: '/videos/greeting.mp4',
   [SANTA_STATES.LISTENING]: '/videos/listening.mp4',
   [SANTA_STATES.LAUGHING]: '/videos/laughing.mp4',
