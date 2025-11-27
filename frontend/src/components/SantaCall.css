@@ -1,15 +1,37 @@
 .santa-call {
   min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  background: #000;
   padding: 20px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* Timer display */
+.call-timer {
+  color: white;
+  font-size: 16px;
+  font-weight: 300;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  margin-bottom: 12px;
+  letter-spacing: 2px;
 }
 
 .santa-call-container {
+  /* WIDTH determina size-ul, HEIGHT e AUTO din aspect-ratio */
   width: 464px;
-  height: 688px;
+  /* IMPORTANT: Folosim 100% nu 100vw - pe iOS 100vw include scrollbar si cauzeaza overflow! */
+  max-width: 100%;
+
+  /* HEIGHT = AUTO permite aspect-ratio sa functioneze */
+  /* aspect-ratio va calcula height-ul automat */
+  aspect-ratio: 464 / 688;
+
   background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
   border-radius: 24px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
@@ -19,6 +41,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
 }
 
 /* IDLE SCREEN */
@@ -72,6 +95,31 @@
 
 .call-button.start:active {
   transform: scale(0.95);
+}
+
+.resume-options {
+  text-align: center;
+  margin-top: 20px;
+}
+
+.resume-hint {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  margin: 0 0 10px 0;
+}
+
+.new-call-link {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.new-call-link:hover {
+  color: rgba(255, 255, 255, 0.8);
 }
 
 /* CALLING SCREEN */
@@ -232,40 +280,48 @@
 }
 
 .call-status {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
   text-align: center;
-  margin-bottom: 30px;
-  min-height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
+  z-index: 20;
 }
 
 .call-status p {
-  margin: 5px 0;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 16px;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  font-weight: 300;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 6px 14px;
+  border-radius: 12px;
 }
 
-.listening-indicator {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.listening-indicator,
+.speaking-indicator,
+.processing-indicator {
+  background: rgba(0, 0, 0, 0.5);
+  border: none;
+  border-radius: 12px;
+  padding: 6px 14px;
+  box-shadow: none;
+  animation: none;
+}
+
+.listening-indicator p,
+.speaking-indicator p,
+.processing-indicator p {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  font-weight: 300;
+  margin: 0;
+  background: transparent;
+  padding: 0;
 }
 
 .mic-icon {
-  color: #f5576c;
-  font-size: 24px;
-  animation: pulse-icon 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse-icon {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.2);
-  }
+  display: none;
 }
 
 /* END CALL BUTTON */
@@ -302,28 +358,112 @@
   transform: translateX(-50%) scale(0.95);
 }
 
-/* RESPONSIVE - doar pentru mobile devices */
+/* RESPONSIVE - Mobile - reducem padding */
 @media (max-width: 504px) {
   .santa-call {
-    padding: 0;
+    padding: 10px;
+  }
+
+  /* max-width: 100% mosteneste din regula principala */
+  /* padding-ul de 10px de pe .santa-call face ca 100% sa fie corect */
+}
+
+/* LANDSCAPE MODE - Pastreaza aspect ratio, centrat */
+@media (orientation: landscape) and (max-height: 500px) {
+  .santa-call {
+    padding: 10px;
+    padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
   }
 
   .santa-call-container {
-    width: 100vw;
-    height: 100vh;
-    border-radius: 0;
+    /* In landscape, height e limitat, width se calculeaza din aspect ratio */
+    width: auto;
+    height: calc(100vh - 20px);
+    height: calc(100dvh - 20px);
+    max-height: calc(100vh - 20px);
+    max-height: calc(100dvh - 20px);
+    max-width: calc((100vh - 20px) * (464 / 688));
+    max-width: calc((100dvh - 20px) * (464 / 688));
+    border-radius: 16px;
+    aspect-ratio: 464 / 688;
+  }
+
+  /* Ajustari pentru elementele din landscape */
+  .end-call-button {
+    width: 60px;
+    height: 60px;
+    bottom: 20px;
+  }
+
+  .end-call-button svg {
+    font-size: 24px;
+  }
+
+  .call-status {
+    top: 10px;
   }
 }
 
-/* Pentru ecrane foarte mici în height DAR DOAR pe mobile */
-@media (max-width: 504px) and (max-height: 900px) {
-  .santa-call {
-    padding: 0;
-  }
-
+/* iPhone landscape specific (932px width) */
+@media (orientation: landscape) and (min-width: 800px) and (max-height: 450px) {
   .santa-call-container {
-    width: 100vw;
-    height: 100vh;
-    border-radius: 0;
+    height: calc(100vh - 20px);
+    height: calc(100dvh - 20px);
+    max-width: calc((100vh - 20px) * (464 / 688));
+    max-width: calc((100dvh - 20px) * (464 / 688));
   }
+}
+
+/* GLITCH OVERLAY */
+.glitch-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.glitch-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Stilurile pentru speaking/processing sunt definite impreuna cu listening mai sus */
+
+/* DEBUG VOLUME */
+.debug-volume {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  right: 20px;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.8);
+  padding: 10px;
+  border-radius: 8px;
+  font-family: monospace;
+}
+
+.volume-bar-container {
+  width: 100%;
+  height: 20px;
+  background: #333;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.volume-bar {
+  height: 100%;
+  transition: width 0.05s ease-out;
+  border-radius: 4px;
+}
+
+.volume-text {
+  color: #fff;
+  font-size: 11px;
+  display: block;
+  text-align: center;
 }

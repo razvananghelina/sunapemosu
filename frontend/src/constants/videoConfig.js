@@ -1,54 +1,72 @@
+import { getVideoUrl } from './assetsConfig';
+
 // Configurație pentru video-urile Moșului
 export const VIDEO_CONFIG = {
   intro: {
-    src: '/videos/intro.mp4',
+    src: getVideoUrl('intro.mp4'),
     loop: false,
     description: 'Video de introducere când începe apelul'
   },
   listening: {
-    src: '/videos/listening.mp4',
+    src: getVideoUrl('listening.mp4'),
     loop: true,
     description: 'Moșul ascultă - se repetă continuu'
   },
-  listening2: {
-    src: '/videos/listening2.mp4',
-    loop: true,
-    description: 'Moșul ascultă - varianta 2'
-  },
   speaking: {
-    src: '/videos/speaks.mp4',
+    src: getVideoUrl('speaks.mp4'),
     loop: true,
     description: 'Moșul vorbește normal'
   },
+  // Stari multiple de speaking - pentru varietate in conversatie
+  speaking_normal: {
+    src: getVideoUrl('speaks.mp4'),
+    loop: true,
+    description: 'Moșul vorbește normal'
+  },
+  speaking_amused: {
+    src: getVideoUrl('speaks_amused.mp4'),
+    loop: true,
+    description: 'Moșul vorbește amuzat'
+  },
+  speaking_amazed: {
+    src: getVideoUrl('speaks_amazed.mp4'),
+    loop: true,
+    description: 'Moșul vorbește uimit'
+  },
   kids_list: {
-    src: '/videos/kids_list.mp4',
-    loop: true,
-    description: 'Moșul vorbește despre lista copiilor - varianta 1'
-  },
-  kids_list2: {
-    src: '/videos/kids_list2.mp4',
-    loop: true,
-    description: 'Moșul vorbește despre lista copiilor - varianta 2'
-  },
-  kids_list3: {
-    src: '/videos/kids_list3.mp4',
-    loop: true,
-    description: 'Moșul vorbește despre lista copiilor - varianta 3'
+    src: getVideoUrl('kids_list.mp4'),
+    loop: false,
+    description: 'Moșul caută pe lista de copii cuminți'
   },
   laughing: {
-    src: '/videos/laughing.mp4',
-    loop: true,
+    src: getVideoUrl('laughing.mp4'),
+    loop: false,
     description: 'Moșul râde'
   },
   amazed: {
-    src: '/videos/amazed.mp4',
-    loop: true,
+    src: getVideoUrl('amazed.mp4'),
+    loop: false,
     description: 'Moșul este uimit/surprins'
   },
   elfs_working: {
-    src: '/videos/elfs_working.mp4',
+    src: getVideoUrl('elfs_working.mp4'),
+    loop: false,
+    description: 'Elfii lucrează la cadouri'
+  },
+  flight: {
+    src: getVideoUrl('flight.mp4'),
+    loop: false,
+    description: 'Zbor magic cu sania si renii'
+  },
+  glitch: {
+    src: getVideoUrl('glitch.mp4'),
     loop: true,
-    description: 'Moșul vorbește despre elfii care lucrează'
+    description: 'Efect de glitch - se afiseaza cand asteptam raspunsul'
+  },
+  polulnord: {
+    src: getVideoUrl('polulnord.mp4'),
+    loop: false,
+    description: 'Imagini cu Polul Nord'
   }
 };
 
@@ -58,6 +76,10 @@ export const STATE_TO_VIDEO = {
   greeting: 'speaking',
   listening: 'listening',
   speaking: 'speaking',
+  // Stari multiple de speaking
+  speaking_normal: 'speaking_normal',
+  speaking_amused: 'speaking_amused',
+  speaking_amazed: 'speaking_amazed',
   laughing: 'laughing',
   surprised: 'amazed',
   happy: 'laughing',

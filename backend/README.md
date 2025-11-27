@@ -1,6 +1,10 @@
-# Santa Call API - Backend
+# Santa Call API - Backend (DEPRECATED)
 
-## Setup
+> **IMPORTANT**: Acest backend PHP a fost inlocuit cu Cloudflare Workers.
+> Vezi `/cloudflare-workers/` pentru noul backend.
+> Acest folder ramane pentru referinta.
+
+## Setup (Legacy)
 
 1. Copy `config/config.example.php` to `config/config.php`
 2. Add your API keys:

@@ -1,11 +1,29 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://sunapemosu-api.sunapemosu.workers.dev/api';
 
 export const api = {
   async speechToText(audioBlob) {
     const formData = new FormData();
-    formData.append('audio', audioBlob, 'recording.webm');
+    // Determina extensia corecta bazata pe mime type
+    // Suport pentru: webm, mp4, ogg, aac, mpeg (mp3)
+    let filename = 'recording.webm';
+    const mimeType = audioBlob.type.toLowerCase();
 
-    const response = await fetch(`${API_BASE_URL}/speech-to-text.php`, {
+    if (mimeType.includes('mp4') || mimeType.includes('m4a')) {
+      filename = 'recording.mp4';
+    } else if (mimeType.includes('ogg')) {
+      filename = 'recording.ogg';
+    } else if (mimeType.includes('aac')) {
+      filename = 'recording.aac';
+    } else if (mimeType.includes('mpeg') || mimeType.includes('mp3')) {
+      filename = 'recording.mp3';
+    } else if (mimeType.includes('wav')) {
+      filename = 'recording.wav';
+    }
+
+    console.log('[STT] Sending audio:', filename, 'size:', audioBlob.size, 'type:', audioBlob.type);
+    formData.append('audio', audioBlob, filename);
+
+    const response = await fetch(`${API_BASE_URL}/speech-to-text`, {
       method: 'POST',
       body: formData,
     });
@@ -18,8 +36,8 @@ export const api = {
     return response.json();
   },
 
-  async chat(message, history = [], childInfo = null) {
-    const response = await fetch(`${API_BASE_URL}/chat.php`, {
+  async chat(message, history = [], childInfo = null, conversationSummary = null, agendaStep = null, agendaPrompt = null, childState = null) {
+    const response = await fetch(`${API_BASE_URL}/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -28,6 +46,10 @@ export const api = {
         message,
         history,
         childInfo,
+        conversationSummary,
+        agendaStep,
+        agendaPrompt,
+        childState,
       }),
     });
 
@@ -44,7 +66,7 @@ export const api = {
     if (voiceId) body.voice_id = voiceId;
     if (voiceSettings) body.voice_settings = voiceSettings;
 
-    const response = await fetch(`${API_BASE_URL}/text-to-speech.php`, {
+    const response = await fetch(`${API_BASE_URL}/text-to-speech`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -61,7 +83,7 @@ export const api = {
   },
 
   async getSettings() {
-    const response = await fetch(`${API_BASE_URL}/settings.php`);
+    const response = await fetch(`${API_BASE_URL}/settings`);
 
     if (!response.ok) {
       const error = await response.json();
@@ -72,7 +94,7 @@ export const api = {
   },
 
   async updateSettings(settings) {
-    const response = await fetch(`${API_BASE_URL}/settings.php`, {
+    const response = await fetch(`${API_BASE_URL}/settings`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

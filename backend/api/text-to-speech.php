@@ -18,12 +18,24 @@ $text = $input['text'];
 $voiceId = $input['voice_id'] ?? $config['elevenlabs']['voice_id'];
 $voiceSettings = $input['voice_settings'] ?? $config['elevenlabs']['voice_settings'];
 
+// Extragem speed din voice_settings daca exista (trebuie sa fie separat in API)
+$speed = null;
+if (isset($voiceSettings['speed'])) {
+    $speed = $voiceSettings['speed'];
+    unset($voiceSettings['speed']); // Scoatem din voice_settings
+}
+
 // Prepare request to Eleven Labs
 $data = [
     'text' => $text,
     'model_id' => $config['elevenlabs']['model_id'],
     'voice_settings' => $voiceSettings
 ];
+
+// Adaugam speed ca parametru separat (nu in voice_settings)
+if ($speed !== null) {
+    $data['speed'] = $speed;
+}
 
 $ch = curl_init();
 
@@ -36,7 +48,9 @@ curl_setopt_array($ch, [
         'xi-api-key: ' . $config['elevenlabs']['api_key'],
         'Content-Type: application/json',
         'Accept: audio/mpeg'
-    ]
+    ],
+    CURLOPT_TIMEOUT => 30, // 30 secunde timeout total
+    CURLOPT_CONNECTTIMEOUT => 10 // 10 secunde pentru conectare
 ]);
 
 $response = curl_exec($ch);

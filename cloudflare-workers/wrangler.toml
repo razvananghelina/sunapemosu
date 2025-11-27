@@ -1,0 +1,21 @@
+name = "sunapemosu-api"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+# Environment variables (set these in Cloudflare dashboard or use wrangler secret)
+# OPENAI_API_KEY = "your-key"
+# ELEVENLABS_API_KEY = "your-key"
+# ELEVENLABS_VOICE_ID = "your-voice-id"
+
+[vars]
+ELEVENLABS_MODEL_ID = "eleven_turbo_v2_5"
+GROQ_MODEL = "llama-3.1-8b-instant"
+
+# D1 Database (pentru users, payments - o sa o cream mai tarziu)
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "sunapemosu"
+# database_id = "your-database-id"
+
+# CORS - allowed origins
+# In production, set these via dashboard

@@ -10,7 +10,9 @@ return [
     'elevenlabs' => [
         'api_key' => 'your-elevenlabs-api-key-here',
         'voice_id' => 'default-voice-id',
-        'model_id' => 'eleven_monolingual_v1',
+        // eleven_turbo_v2_5 - FOARTE RAPID, optimizat pentru conversatii real-time
+        // eleven_monolingual_v1 - Calitate mai buna dar mai lent
+        'model_id' => 'eleven_turbo_v2_5',
         'voice_settings' => [
             'stability' => 0.5,
             'similarity_boost' => 0.75,

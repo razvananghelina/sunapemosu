@@ -9,26 +9,26 @@ export const SANTA_STATES = {
   HAPPY: 'happy',
   THINKING: 'thinking',
   SPEAKING: 'speaking',
+  // Stari multiple de speaking - definite de utilizator
+  SPEAKING_NORMAL: 'speaking_normal',
+  SPEAKING_AMUSED: 'speaking_amused',
+  SPEAKING_AMAZED: 'speaking_amazed',
   SAD: 'sad',
   EXCITED: 'excited',
   CURIOUS: 'curious',
 };
 
-export const SANTA_STATES_LIST = Object.values(SANTA_STATES);
+// Lista de stari de speaking disponibile
+export const SPEAKING_STATES_LIST = [
+  SANTA_STATES.SPEAKING,
+  SANTA_STATES.SPEAKING_NORMAL,
+  SANTA_STATES.SPEAKING_AMUSED,
+  SANTA_STATES.SPEAKING_AMAZED,
+];
 
-// Mapare video pentru fiecare stare (placeholder pentru viitor)
-export const SANTA_VIDEOS = {
-  [SANTA_STATES.IDLE]: null,
-  [SANTA_STATES.CALLING]: null,
-  [SANTA_STATES.INTRO]: '/videos/intro.mp4',
-  [SANTA_STATES.GREETING]: '/videos/greeting.mp4',
-  [SANTA_STATES.LISTENING]: '/videos/listening.mp4',
-  [SANTA_STATES.LAUGHING]: '/videos/laughing.mp4',
-  [SANTA_STATES.SURPRISED]: '/videos/surprised.mp4',
-  [SANTA_STATES.HAPPY]: '/videos/happy.mp4',
-  [SANTA_STATES.THINKING]: '/videos/thinking.mp4',
-  [SANTA_STATES.SPEAKING]: '/videos/speaking.mp4',
-  [SANTA_STATES.SAD]: '/videos/sad.mp4',
-  [SANTA_STATES.EXCITED]: '/videos/excited.mp4',
-  [SANTA_STATES.CURIOUS]: '/videos/curious.mp4',
+// Helper pentru a verifica daca o stare e de tip speaking
+export const isSpeakingState = (state) => {
+  return SPEAKING_STATES_LIST.includes(state);
 };
+
+export const SANTA_STATES_LIST = Object.values(SANTA_STATES);

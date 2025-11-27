@@ -1,189 +1,151 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { VIDEO_CONFIG } from '../constants/videoConfig';
 import './VideoPlayer.css';
 
-export const VideoPlayer = ({ currentVideo, onVideoEnd, onPlay, onStop, className = '', testMode = false, onTestVideoChange }) => {
-  const videoARef = useRef(null);
-  const videoBRef = useRef(null);
-  const [activeVideo, setActiveVideo] = useState(null); // null, 'A' sau 'B'
-  const [videoAReady, setVideoAReady] = useState(false);
-  const [videoBReady, setVideoBReady] = useState(false);
-  const [isNearEnd, setIsNearEnd] = useState(false); // true când suntem aproape de ultimul frame
-  const previousVideoRef = useRef(null);
-  const isTransitioningRef = useRef(false);
-  const queuedVideoRef = useRef(null); // video-ul în așteptare
+// Preload video-uri importante pentru tranzitii mai rapide
+const preloadedVideos = {};
+const preloadVideo = (videoName) => {
+  if (preloadedVideos[videoName] || !VIDEO_CONFIG[videoName]) return;
 
+  const video = document.createElement('video');
+  video.preload = 'auto';
+  video.src = VIDEO_CONFIG[videoName].src;
+  video.load();
+  preloadedVideos[videoName] = video;
+  console.log('[PRELOAD] Preloading video:', videoName);
+};
+
+// Preload video-uri principale la incarcarea modulului
+['listening', 'speaking', 'speaking_normal', 'speaking_amused', 'speaking_amazed', 'laughing', 'amazed'].forEach(preloadVideo);
+
+export const VideoPlayer = ({ currentVideo, onVideoEnd, onPlay, onStop, className = '', testMode = false, onTestVideoChange }) => {
+  const videoRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const previousVideoRef = useRef(null);
+
+  // Refs pentru callbacks ca sa evitam re-atasarea event listeners
+  const onVideoEndRef = useRef(onVideoEnd);
+  const onPlayRef = useRef(onPlay);
+  const onStopRef = useRef(onStop);
+
+  // Update refs cand callbacks se schimba
+  useEffect(() => {
+    onVideoEndRef.current = onVideoEnd;
+    onPlayRef.current = onPlay;
+    onStopRef.current = onStop;
+  }, [onVideoEnd, onPlay, onStop]);
+
+  // Preload urmatoarele video-uri probabile bazat pe cel curent
+  useEffect(() => {
+    if (currentVideo === 'intro') {
+      preloadVideo('listening');
+      preloadVideo('speaking');
+      preloadVideo('speaking_normal');
+    } else if (currentVideo === 'listening') {
+      preloadVideo('speaking');
+      preloadVideo('speaking_normal');
+      preloadVideo('speaking_amused');
+      preloadVideo('speaking_amazed');
+      preloadVideo('kids_list');
+      preloadVideo('elfs_working');
+    } else if (currentVideo === 'speaking' || currentVideo.startsWith('speaking_')) {
+      preloadVideo('listening');
+      preloadVideo('flight');
+    }
+  }, [currentVideo]);
+
+  // Effect pentru schimbarea video-ului
   useEffect(() => {
     if (!currentVideo || !VIDEO_CONFIG[currentVideo]) {
       console.warn(`Video config not found for: ${currentVideo}`);
       return;
     }
 
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
+
     const config = VIDEO_CONFIG[currentVideo];
     const isChangingVideo = previousVideoRef.current !== currentVideo;
 
     if (!isChangingVideo) {
-      console.log('Same video, skipping');
+      console.log('[VIDEO] Same video, skipping:', currentVideo);
       return;
     }
+
+    console.log('[VIDEO] Loading video:', currentVideo, config.src);
 
     // Notificăm că video-ul anterior s-a oprit
-    if (previousVideoRef.current && onStop) {
-      console.log('Video stopping:', previousVideoRef.current);
-      onStop(previousVideoRef.current);
+    if (previousVideoRef.current && onStopRef.current) {
+      onStopRef.current(previousVideoRef.current);
     }
 
-    console.log('Loading new video:', currentVideo, config.src, 'activeVideo:', activeVideo);
+    // Configurăm video-ul
+    videoElement.src = config.src;
+    videoElement.loop = config.loop;
+    videoElement.muted = false; // Toate video-urile au sunet
 
-    // Prevenim tranziții multiple simultane
-    if (isTransitioningRef.current) {
-      console.log('Transition already in progress, skipping...');
-      return;
-    }
-
-    isTransitioningRef.current = true;
-
-    // La prima încărcare, folosim Video A
-    // După aceea, alternam între A și B
-    const nextVideoElement = !activeVideo || activeVideo === 'B' ? videoARef.current : videoBRef.current;
-    const nextVideoId = !activeVideo || activeVideo === 'B' ? 'A' : 'B';
-
-    if (!nextVideoElement) {
-      isTransitioningRef.current = false;
-      return;
-    }
-
-    // Resetăm starea de ready pentru video-ul următor
-    if (nextVideoId === 'A') {
-      setVideoAReady(false);
-    } else {
-      setVideoBReady(false);
-    }
-
-    // Configurăm video-ul următor
-    nextVideoElement.src = config.src;
-    nextVideoElement.loop = config.loop;
+    // Handler pentru metadata (pentru debug)
+    const handleLoadedMetadata = () => {
+      console.log('[VIDEO] Metadata loaded:', currentVideo, 'duration:', videoElement.duration, 'loop:', config.loop);
+    };
 
     // Handler pentru când video-ul este gata
     const handleCanPlay = () => {
-      console.log('Video ready to play:', currentVideo);
+      console.log('[VIDEO] Ready to play:', currentVideo, 'duration:', videoElement.duration);
 
-      // Prevenim fullscreen
-      if (document.fullscreenElement) {
-        document.exitFullscreen();
-      }
+      videoElement.play()
+        .then(() => {
+          console.log('[VIDEO] Playing:', currentVideo);
+          setIsPlaying(true);
+          previousVideoRef.current = currentVideo;
 
-      // Playăm video-ul nou
-      const playPromise = nextVideoElement.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            console.log('Video playing:', currentVideo);
+          if (onPlayRef.current) {
+            onPlayRef.current(currentVideo);
+          }
+        })
+        .catch(err => {
+          console.error('[VIDEO] Error playing:', currentVideo, err);
+          // Daca play() esueaza (blocked by browser, etc), notificam ca s-a terminat
+          if (onVideoEndRef.current) {
+            onVideoEndRef.current(currentVideo);
+          }
+        });
+    };
 
-            // Facem swap - video-ul nou devine activ
-            setActiveVideo(nextVideoId);
+    // Handler pentru când video-ul se termină
+    const handleEnded = () => {
+      console.log('[VIDEO] Ended:', currentVideo, 'loop:', config.loop);
 
-            // Marcăm video-ul ca ready
-            if (nextVideoId === 'A') {
-              setVideoAReady(true);
-            } else {
-              setVideoBReady(true);
-            }
-
-            // Actualizăm referința
-            previousVideoRef.current = currentVideo;
-
-            // Tranziția s-a terminat
-            isTransitioningRef.current = false;
-
-            // Notificăm că video-ul a început să ruleze
-            if (onPlay) {
-              onPlay(currentVideo);
-            }
-          })
-          .catch(err => {
-            console.error('Error playing video:', err);
-            isTransitioningRef.current = false;
-          });
-      } else {
-        isTransitioningRef.current = false;
+      if (!config.loop && onVideoEndRef.current) {
+        onVideoEndRef.current(currentVideo);
       }
     };
 
-    // Adăugăm event listener pentru canplay
-    nextVideoElement.addEventListener('canplay', handleCanPlay, { once: true });
+    // Handler pentru erori video (fisier lipsa, format invalid, etc)
+    const handleError = (e) => {
+      console.error('[VIDEO] Error:', currentVideo, e);
+      // Daca video-ul nu se poate incarca, notificam ca s-a terminat
+      // pentru a nu bloca aplicatia
+      if (onVideoEndRef.current) {
+        onVideoEndRef.current(currentVideo);
+      }
+    };
+
+    videoElement.addEventListener('loadedmetadata', handleLoadedMetadata, { once: true });
+    videoElement.addEventListener('canplay', handleCanPlay, { once: true });
+    videoElement.addEventListener('ended', handleEnded);
+    videoElement.addEventListener('error', handleError, { once: true });
 
     // Încărcăm video-ul
-    nextVideoElement.load();
-
-    // Cleanup
-    return () => {
-      nextVideoElement.removeEventListener('canplay', handleCanPlay);
-      isTransitioningRef.current = false;
-    };
-  }, [currentVideo]);
-
-  const handleVideoEnd = (videoId) => {
-    const config = VIDEO_CONFIG[currentVideo];
-    if (!config) return;
-
-    console.log('Video ended:', currentVideo, 'loop:', config.loop);
-
-    // Dacă video-ul nu ar trebui să loopeze, anunțăm părinte
-    if (!config.loop && onVideoEnd) {
-      onVideoEnd(currentVideo);
-
-      // Notificăm și că video-ul s-a oprit
-      if (onStop) {
-        onStop(currentVideo);
-      }
-    }
-  };
-
-  // Monitorizare pentru ultimul frame (ultimele 1.5 secunde)
-  useEffect(() => {
-    const activeVideoElement = activeVideo === 'A' ? videoARef.current : videoBRef.current;
-    if (!activeVideoElement || !testMode) return;
-
-    const handleTimeUpdate = () => {
-      const { currentTime, duration } = activeVideoElement;
-      if (duration && !isNaN(duration)) {
-        // Considerăm că suntem aproape de final în ultimele 1.5 secunde
-        const timeFromEnd = duration - currentTime;
-        const nearEnd = timeFromEnd <= 1.5 && timeFromEnd > 0;
-        setIsNearEnd(nearEnd);
-
-        // Dacă suntem la ultimul frame și avem un video în queue, îl activăm
-        if (nearEnd && queuedVideoRef.current && onTestVideoChange) {
-          const videoToPlay = queuedVideoRef.current;
-          queuedVideoRef.current = null;
-          console.log('Executing queued video change:', videoToPlay);
-          onTestVideoChange(videoToPlay);
-        }
-      }
-    };
-
-    activeVideoElement.addEventListener('timeupdate', handleTimeUpdate);
+    videoElement.load();
 
     return () => {
-      activeVideoElement.removeEventListener('timeupdate', handleTimeUpdate);
+      videoElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      videoElement.removeEventListener('canplay', handleCanPlay);
+      videoElement.removeEventListener('ended', handleEnded);
+      videoElement.removeEventListener('error', handleError);
     };
-  }, [activeVideo, testMode, onTestVideoChange]);
-
-  const handleTestVideoChange = (videoName) => {
-    if (!onTestVideoChange) return;
-
-    if (isNearEnd) {
-      // Suntem la ultimul frame, schimbăm imediat
-      console.log('Immediate video change:', videoName);
-      queuedVideoRef.current = null;
-      onTestVideoChange(videoName);
-    } else {
-      // Nu suntem la ultimul frame, punem în queue
-      console.log('Queueing video change:', videoName);
-      queuedVideoRef.current = videoName;
-    }
-  };
+  }, [currentVideo]); // Doar currentVideo in dependencies - callbacks sunt in refs
 
   if (!currentVideo) {
     return null;
@@ -193,46 +155,27 @@ export const VideoPlayer = ({ currentVideo, onVideoEnd, onPlay, onStop, classNam
 
   return (
     <div className={`video-player-container ${className}`}>
-      {/* Video A */}
       <video
-        ref={videoARef}
-        className={`santa-video ${activeVideo === 'A' ? 'active' : 'hidden'}`}
+        ref={videoRef}
+        className="santa-video active"
         playsInline
         webkit-playsinline="true"
         controlsList="nodownload nofullscreen"
         disablePictureInPicture
-        onEnded={() => handleVideoEnd('A')}
-      />
-
-      {/* Video B */}
-      <video
-        ref={videoBRef}
-        className={`santa-video ${activeVideo === 'B' ? 'active' : 'hidden'}`}
-        playsInline
-        webkit-playsinline="true"
-        controlsList="nodownload nofullscreen"
-        disablePictureInPicture
-        onEnded={() => handleVideoEnd('B')}
       />
 
       {/* Test Mode Overlay */}
-      {testMode && (
+      {testMode && onTestVideoChange && (
         <div className="test-overlay">
           <div className="test-status">
-            <span className={`status-indicator ${isNearEnd ? 'ready' : 'waiting'}`}>
-              {isNearEnd ? '✓ Gata pentru schimbare' : '⏳ Așteaptă ultimul frame'}
-            </span>
             <span className="current-video-label">Current: {currentVideo}</span>
-            {queuedVideoRef.current && (
-              <span className="queued-video-label">Queued: {queuedVideoRef.current}</span>
-            )}
           </div>
           <div className="test-buttons">
             {availableVideos.map((videoName) => (
               <button
                 key={videoName}
-                className={`test-button ${currentVideo === videoName ? 'active' : ''} ${queuedVideoRef.current === videoName ? 'queued' : ''}`}
-                onClick={() => handleTestVideoChange(videoName)}
+                className={`test-button ${currentVideo === videoName ? 'active' : ''}`}
+                onClick={() => onTestVideoChange(videoName)}
                 title={VIDEO_CONFIG[videoName].description}
               >
                 {videoName}

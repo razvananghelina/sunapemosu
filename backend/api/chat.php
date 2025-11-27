@@ -17,46 +17,115 @@ if (!isset($input['message'])) {
 $userMessage = $input['message'];
 $conversationHistory = $input['history'] ?? [];
 $childInfo = $input['childInfo'] ?? null;
+$conversationSummary = $input['conversationSummary'] ?? null;
+$agendaStep = $input['agendaStep'] ?? null; // Pasul curent din agenda (id)
+$agendaPrompt = $input['agendaPrompt'] ?? null; // Prompt-ul specific pentru pasul curent
+$childState = $input['childState'] ?? null; // Starea copilului (gender, count, names, ages)
 
-// Build child context
+// Build child context - childInfo e un string simplu cu toate informatiile de la parinti
 $childContext = '';
-if ($childInfo && isset($childInfo['name'])) {
-    $childName = $childInfo['name'];
-    $childDetails = $childInfo['info'] ?? '';
-    $childContext = "\n\nInformatii despre copilul cu care vorbesti:\n- Nume: {$childName}\n- Detalii: {$childDetails}\n\nFoloseste aceste informatii in conversatie de o maniera naturala si prietenoasa.";
+if ($childInfo && is_string($childInfo) && strlen(trim($childInfo)) > 0) {
+    $childContext = "\n\nINFORMATII SECRETE despre copil/copii (completate de parinti):
+{$childInfo}
+
+IMPORTANT - Foloseste aceste informatii pentru a-i SURPRINDE pe copii:
+- Daca stii numele, NU intreba cum il cheama - spune-i pe nume: \"Aaaa, tu esti [nume]! Te-am recunoscut!\"
+- Daca stii varsta, NU o mai intreba
+- Mentioneaza hobby-uri, prieteni, realizari pentru a-i uimi
+- Fa-i sa creada ca stii TOTUL despre ei pentru ca esti Mos Craciun magic!
+- Daca sunt MAI MULTI copii si nu ii cunosti pe toti, intreaba doar despre cei necunoscuti";
 }
 
-// System prompt for Santa Claus
-$systemPrompt = "Esti Mos Craciun, personajul magic si vesel care aduce cadouri copiilor cuminti. Vorbesti cu caldura si bunatate, intotdeauna plin de spirit de Craciun. Iti place sa asculti ce isi doresc copiii de Craciun, sa le spui povesti despre renii tai, despre atelier si despre elfii tai. Raspunde in limba romana, folosind un ton prietenos si magic. Pastreaza raspunsurile relativ scurte (2-4 propozitii) pentru a simula o conversatie naturala.{$childContext}
+// Build child state context
+$childStateContext = '';
+if ($childState && is_array($childState)) {
+    $parts = [];
+    if (!empty($childState['childNames'])) {
+        $parts[] = "Nume cunoscute: " . implode(", ", $childState['childNames']);
+    }
+    if (!empty($childState['childAges'])) {
+        $parts[] = "Varste: " . implode(", ", $childState['childAges']);
+    }
+    if (!empty($childState['childGender'])) {
+        $parts[] = "Gen: " . $childState['childGender'];
+    }
+    if (!empty($childState['childCount'])) {
+        $parts[] = "Numar copii: " . $childState['childCount'];
+    }
+    if (!empty($parts)) {
+        $childStateContext = "\n\nINFORMATII CUNOSCUTE DESPRE COPII (din conversatia anterioara):\n" . implode("\n", $parts);
+    }
+}
 
-IMPORTANT - Nu vezi prea bine si uneori te incurci:
-- La inceput, intreaba INTOTDEAUNA cu cine vorbesti (\"Cu cine vorbesc?\", \"Cine esti tu?\")
-- Pot fi mai multi copii in conversatie - fii atent la nume diferite
-- Daca auzi un nume nou sau diferit, intreaba din nou: \"Si tu cum te cheama?\" sau \"Mai este cineva acolo?\"
-- Daca nu intelegi ceva sau pare confuz, reintreba: \"Ce ai spus?\" sau \"Poti repeta?\", \"Am auzit bine?\"
-- Fii prietenos si amuzant cu faptul ca nu vezi prea bine
+// Build conversation summary context
+$summaryContext = '';
+if ($conversationSummary && is_string($conversationSummary) && strlen(trim($conversationSummary)) > 0) {
+    $summaryContext = "\n\n=== SUMAR CONVERSATIE (ce s-a intamplat pana acum) ===
+{$conversationSummary}
+=== SFARSIT SUMAR ===";
+}
 
-In timpul conversatiei:
-- Intreaba copilul daca a fost cuminte in acest an
-- Intreaba ce planuri are de sarbatori
-- Mentioneaza ca este pe lista de copii cuminti
-- La sfarsitul conversatiei, ureaza-i sa fie cuminte in continuare
+// Build agenda step context
+$agendaContext = '';
+if ($agendaStep) {
+    $agendaContext = "\n\nPAS CURENT IN AGENDA: {$agendaStep}";
+}
+if ($agendaPrompt) {
+    $agendaContext .= "\n\nINSTRUCTIUNI PENTRU ACEST PAS:\n{$agendaPrompt}";
+}
 
-IMPORTANT: Trebuie sa raspunzi OBLIGATORIU in format JSON cu urmatoarea structura:
+// System prompt for Santa Claus - simplificat, fara agenda
+$systemPrompt = "Esti Mos Craciun, personajul magic si vesel care aduce cadouri copiilor cuminti. Vorbesti cu caldura si bunatate, intotdeauna plin de spirit de Craciun. Raspunde in limba romana, folosind un ton prietenos si magic. Pastreaza raspunsurile relativ scurte (2-4 propozitii) pentru a simula o conversatie naturala.{$childContext}{$childStateContext}{$summaryContext}{$agendaContext}
+
+IMPORTANT - Nu auzi prea bine:
+- Daca nu intelegi ceva, spune ca nu ai auzit bine: \"Ce ai spus?\", \"Poti repeta?\", \"Scuze, nu te-am auzit bine\"
+- Fii prietenos si amuzant cu faptul ca nu auzi prea bine
+
+=== FORMAT RASPUNS JSON ===
+Raspunde DOAR in acest format JSON (nimic altceva!):
 {
-  \"state\": \"una dintre starile valide\",
-  \"message\": \"raspunsul tau\"
+  \"message\": \"Textul pe care il spui copilului\",
+  \"summary\": \"Sumar scurt al conversatiei (include ce ai aflat)\",
+  \"childState\": {
+    \"childGender\": null,
+    \"childCount\": null,
+    \"childNames\": [],
+    \"childAges\": []
+  }
 }
 
-Starile valide sunt: greeting, listening, laughing, surprised, happy, thinking, speaking, sad, excited, curious
+CAMPURI:
+- message: textul TAU (ce spui copilului, fara marcaje)
+- summary: OBLIGATORIU! Sumar actualizat al conversatiei. Include:
+  * Ce ai aflat despre copii (nume, varsta, ce le place)
+  * Ce dorinte au spus
+  * Reactiile lor importante
+- childState: OPTIONAL - completeaza DOAR daca ai aflat informatii NOI despre copii:
+  * childGender: \"baiat\", \"fata\", sau \"mixed\" daca sunt mai multi de genuri diferite
+  * childCount: numarul de copii prezenti (1, 2, 3, etc)
+  * childNames: array cu numele copiilor (ex: [\"Razvan\", \"Livia\"])
+  * childAges: array cu varstele (ex: [7, 8])
+  * Daca nu ai informatii noi, lasa null sau []
 
-Alege starea care se potriveste cel mai bine cu emotia/reactia ta la mesajul copilului. Exemple:
-- Daca copilul spune ceva amuzant -> laughing
-- Daca copilul spune ceva uimitor -> surprised
-- Daca copilul este cuminte si isi doreste ceva frumos -> happy
-- Daca copilul este entuziast -> excited
-- Conversatie normala -> speaking
-- Intreaba ceva -> curious";
+EXEMPLE:
+
+1. Prima interactiune (cunoastere):
+{\"message\": \"Buna ziua! Cu cine vorbesc? Esti Razvan?\", \"summary\": \"Salutare initiala, astept sa confirm cine vorbeste.\", \"childState\": null}
+
+2. Dupa ce aflii numele si varsta:
+{\"message\": \"Razvan! Ce bucuros sunt sa te vad! Si ai 7 ani? Ce mare ai crescut!\", \"summary\": \"Am confirmat ca e Razvan, 7 ani. Un baiat.\", \"childState\": {\"childGender\": \"baiat\", \"childCount\": 1, \"childNames\": [\"Razvan\"], \"childAges\": [7]}}
+
+3. Daca sunt mai multi copii:
+{\"message\": \"Waaau, esti cu Livia! Ce surpriza frumoasa!\", \"summary\": \"Sunt doi copii: Razvan (baiat) si Livia (fata).\", \"childState\": {\"childGender\": \"mixed\", \"childCount\": 2, \"childNames\": [\"Razvan\", \"Livia\"], \"childAges\": [7, 8]}}
+
+4. Conversatie normala (fara informatii noi despre copii):
+{\"message\": \"Ho ho ho! Elfii mei lucreaza din greu la cadouri!\", \"summary\": \"Am povestit despre elfi si Polul Nord.\", \"childState\": null}
+
+IMPORTANT:
+- Raspunde NATURAL, ca si cum ai vorbi cu un copil
+- Foloseste Ho Ho Ho din cand in cand
+- Fii cald, dragastos si plin de magie
+- Urmeaza instructiunile pentru pasul curent din agenda";
 
 // Build messages array
 $messages = [
@@ -75,8 +144,9 @@ $messages[] = ['role' => 'user', 'content' => $userMessage];
 $data = [
     'model' => $config['openai']['model'],
     'messages' => $messages,
-    'temperature' => 0.8,
-    'max_tokens' => 150
+    'temperature' => 0.7,
+    'max_tokens' => 300,
+    'response_format' => ['type' => 'json_object']
 ];
 
 $ch = curl_init();
@@ -89,7 +159,9 @@ curl_setopt_array($ch, [
     CURLOPT_HTTPHEADER => [
         'Authorization: Bearer ' . $config['openai']['api_key'],
         'Content-Type: application/json'
-    ]
+    ],
+    CURLOPT_TIMEOUT => 30,
+    CURLOPT_CONNECTTIMEOUT => 10
 ]);
 
 $response = curl_exec($ch);
@@ -111,18 +183,43 @@ $assistantMessage = $result['choices'][0]['message']['content'] ?? '';
 // Parse JSON response from GPT
 $parsedResponse = json_decode($assistantMessage, true);
 
-if (json_last_error() === JSON_ERROR_NONE && isset($parsedResponse['state']) && isset($parsedResponse['message'])) {
-    // Valid JSON response
+if (json_last_error() === JSON_ERROR_NONE && isset($parsedResponse['message'])) {
+    $message = $parsedResponse['message'];
+    $summary = $parsedResponse['summary'] ?? '';
+    $newChildState = $parsedResponse['childState'] ?? null;
+
+    // Validam childState daca exista
+    if ($newChildState && is_array($newChildState)) {
+        // Ne asiguram ca are structura corecta
+        $validChildState = [
+            'childGender' => $newChildState['childGender'] ?? null,
+            'childCount' => $newChildState['childCount'] ?? null,
+            'childNames' => $newChildState['childNames'] ?? [],
+            'childAges' => $newChildState['childAges'] ?? [],
+        ];
+        // Filtram valorile goale
+        if (empty($validChildState['childGender']) &&
+            empty($validChildState['childCount']) &&
+            empty($validChildState['childNames']) &&
+            empty($validChildState['childAges'])) {
+            $validChildState = null;
+        }
+    } else {
+        $validChildState = null;
+    }
+
     sendJsonResponse([
-        'state' => $parsedResponse['state'],
-        'message' => $parsedResponse['message'],
+        'message' => $message,
+        'summary' => $summary,
+        'childState' => $validChildState,
         'usage' => $result['usage'] ?? null
     ]);
 } else {
     // Fallback if GPT didn't return valid JSON
     sendJsonResponse([
-        'state' => 'speaking',
         'message' => $assistantMessage,
+        'summary' => '',
+        'childState' => null,
         'usage' => $result['usage'] ?? null
     ]);
 }
