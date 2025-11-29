@@ -36,7 +36,7 @@ export const api = {
     return response.json();
   },
 
-  async chat(message, history = [], childInfo = null, conversationSummary = null, agendaStep = null, agendaPrompt = null, childState = null) {
+  async chat(message, history = [], childInfo = null, conversationSummary = null, agendaStep = null, agendaPrompt = null, childState = null, mode = 'normal') {
     const response = await fetch(`${API_BASE_URL}/chat`, {
       method: 'POST',
       headers: {
@@ -50,6 +50,7 @@ export const api = {
         agendaStep,
         agendaPrompt,
         childState,
+        mode, // 'normal' sau 'marketing'
       }),
     });
 

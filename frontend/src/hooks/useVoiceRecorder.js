@@ -1,253 +1,167 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { MicVAD } from '@ricky0123/vad-web';
 
+/**
+ * Hook pentru inregistrare vocala cu detectie inteligenta a vorbirii (VAD)
+ * Foloseste Silero VAD direct (nu React hook) pentru control mai bun al lifecycle-ului
+ */
 export const useVoiceRecorder = ({
   onRecordingComplete,
-  silenceThreshold = 1500, // 1.5 seconds
-  volumeThreshold = 0.01
+  // Parametrii VAD
+  positiveSpeechThreshold = 0.5,
+  negativeSpeechThreshold = 0.35,
+  minSpeechFrames = 3,
+  preSpeechPadFrames = 5,
+  redemptionFrames = 8,
 }) => {
   const [isListening, setIsListening] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [currentVolume, setCurrentVolume] = useState(0);
 
-  const mediaRecorderRef = useRef(null);
-  const audioContextRef = useRef(null);
-  const analyserRef = useRef(null);
-  const streamRef = useRef(null);
-  const chunksRef = useRef([]);
-  const silenceTimerRef = useRef(null);
-  const animationFrameRef = useRef(null);
-  const recordingStartTimeRef = useRef(null);
-  const hasSpokenRef = useRef(false); // Track daca user-ul a vorbit ceva
+  const vadRef = useRef(null);
+  const isInitializingRef = useRef(false);
+  const onRecordingCompleteRef = useRef(onRecordingComplete);
 
-  const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop();
-    }
-    mediaRecorderRef.current = null;
-    setIsRecording(false);
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
-    recordingStartTimeRef.current = null;
-    hasSpokenRef.current = false;
-  }, []);
-
-  const startRecording = useCallback(() => {
-    if (!streamRef.current) return;
-
-    // Guard impotriva pornirii multiple
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      console.log('[AUDIO] Already recording, skipping startRecording');
-      return;
-    }
-
-    chunksRef.current = [];
-    recordingStartTimeRef.current = Date.now();
-    hasSpokenRef.current = false;
-
-    // Determina cel mai bun mimeType suportat pentru Whisper
-    // iOS Safari: mp4/aac, Chrome/Firefox: webm/opus
-    const mimeTypes = [
-      'audio/webm;codecs=opus',
-      'audio/webm',
-      'audio/mp4;codecs=aac',
-      'audio/mp4',
-      'audio/aac',
-      'audio/mpeg',
-      'audio/ogg;codecs=opus',
-    ];
-
-    let mimeType = '';
-    for (const type of mimeTypes) {
-      if (MediaRecorder.isTypeSupported(type)) {
-        mimeType = type;
-        break;
-      }
-    }
-
-    // Fallback - lasa browserul sa aleaga
-    if (!mimeType) {
-      console.warn('No preferred mimeType supported, using browser default');
-      mimeType = '';
-    }
-
-    console.log('[AUDIO] Using mimeType:', mimeType || 'browser default');
-
-    // Configuram MediaRecorder - nu includem mimeType daca e gol
-    const recorderOptions = {
-      audioBitsPerSecond: 128000, // 128kbps pentru calitate buna
-    };
-    if (mimeType) {
-      recorderOptions.mimeType = mimeType;
-    }
-
-    const mediaRecorder = new MediaRecorder(streamRef.current, recorderOptions);
-
-    mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        chunksRef.current.push(event.data);
-      }
-    };
-
-    mediaRecorder.onstop = () => {
-      // Folosim mimeType-ul efectiv al recorder-ului
-      const actualMimeType = mediaRecorder.mimeType || mimeType || 'audio/webm';
-      const audioBlob = new Blob(chunksRef.current, { type: actualMimeType });
-      console.log('[AUDIO] Recording stopped, blob size:', audioBlob.size, 'type:', actualMimeType);
-      onRecordingComplete(audioBlob);
-      chunksRef.current = [];
-    };
-
-    mediaRecorderRef.current = mediaRecorder;
-    mediaRecorder.start();
-    setIsRecording(true);
+  // Keep callback ref updated
+  useEffect(() => {
+    onRecordingCompleteRef.current = onRecordingComplete;
   }, [onRecordingComplete]);
 
-  // Ref pentru a evita pornirea multipla a checkAudioLevel
-  const isCheckingRef = useRef(false);
-  const lastVolumeUpdateRef = useRef(0);
+  /**
+   * Converteste Float32Array in WAV Blob pentru Whisper API
+   */
+  const float32ArrayToWavBlob = useCallback((float32Array, sampleRate = 16000) => {
+    const numChannels = 1;
+    const bitsPerSample = 16;
+    const bytesPerSample = bitsPerSample / 8;
+    const blockAlign = numChannels * bytesPerSample;
+    const byteRate = sampleRate * blockAlign;
+    const dataSize = float32Array.length * bytesPerSample;
+    const bufferSize = 44 + dataSize;
 
-  const checkAudioLevel = useCallback(() => {
-    if (!analyserRef.current || !isListening) {
-      isCheckingRef.current = false;
+    const buffer = new ArrayBuffer(bufferSize);
+    const view = new DataView(buffer);
+
+    const writeString = (offset, string) => {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    };
+
+    writeString(0, 'RIFF');
+    view.setUint32(4, bufferSize - 8, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitsPerSample, true);
+    writeString(36, 'data');
+    view.setUint32(40, dataSize, true);
+
+    let offset = 44;
+    for (let i = 0; i < float32Array.length; i++) {
+      const sample = Math.max(-1, Math.min(1, float32Array[i]));
+      const int16Sample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+      view.setInt16(offset, int16Sample, true);
+      offset += 2;
+    }
+
+    return new Blob([buffer], { type: 'audio/wav' });
+  }, []);
+
+  const startListening = useCallback(async () => {
+    if (isInitializingRef.current) {
+      console.log('[VAD] Already initializing, skipping');
       return;
     }
 
-    const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-    analyserRef.current.getByteFrequencyData(dataArray);
-
-    const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-    const normalizedVolume = average / 255;
-
-    // Update volume state doar la fiecare 100ms pentru a reduce re-renders
-    const now = Date.now();
-    if (now - lastVolumeUpdateRef.current > 100) {
-      setCurrentVolume(normalizedVolume);
-      lastVolumeUpdateRef.current = now;
-    }
-
-    const isSpeaking = normalizedVolume > volumeThreshold;
-
-    // Durata minima de vorbire pentru a considera ca user-ul a vorbit (500ms)
-    const MIN_SPEECH_DURATION = 500;
-
-    if (isSpeaking) {
-      if (!isRecording) {
-        console.log('[VOICE] Starting recording, volume:', normalizedVolume.toFixed(3));
-        startRecording();
-      }
-
-      // Daca user-ul vorbeste si a trecut timpul minim, marcam ca a vorbit
-      if (isRecording && recordingStartTimeRef.current) {
-        const recordingDuration = Date.now() - recordingStartTimeRef.current;
-        if (recordingDuration >= MIN_SPEECH_DURATION && !hasSpokenRef.current) {
-          hasSpokenRef.current = true;
-          console.log('[VOICE] User has spoken for', recordingDuration, 'ms, marking as spoken');
-        }
-      }
-
-      // Resetam timer-ul de tacere cand user-ul vorbeste
-      if (silenceTimerRef.current) {
-        clearTimeout(silenceTimerRef.current);
-        silenceTimerRef.current = null;
-      }
-    } else {
-      // Pornim timer-ul de tacere DOAR daca user-ul a vorbit deja ceva
-      if (isRecording && hasSpokenRef.current && !silenceTimerRef.current) {
-        console.log('[VOICE] Silence detected, starting timer for', silenceThreshold, 'ms');
-        silenceTimerRef.current = setTimeout(() => {
-          console.log('[VOICE] Silence timer completed, stopping recording');
-          stopRecording();
-        }, silenceThreshold);
-      }
-    }
-
-    animationFrameRef.current = requestAnimationFrame(checkAudioLevel);
-  }, [isListening, isRecording, startRecording, stopRecording, silenceThreshold, volumeThreshold]);
-
-  const startListening = useCallback(async () => {
-    try {
-      // Constrangeri audio pentru calitate mai buna si reducere zgomot
-      const audioConstraints = {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        sampleRate: 16000, // 16kHz e ideal pentru speech recognition
-        channelCount: 1,   // Mono e suficient pentru voce
-      };
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
-      streamRef.current = stream;
-
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-      // iOS Safari: AudioContext poate porni in starea "suspended"
-      // Trebuie sa apelam resume() pentru a-l activa
-      if (audioContext.state === 'suspended') {
-        await audioContext.resume();
-        console.log('[VOICE] AudioContext resumed from suspended state');
-      }
-
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 2048;
-      analyser.smoothingTimeConstant = 0.8;
-
-      const source = audioContext.createMediaStreamSource(stream);
-      source.connect(analyser);
-
-      audioContextRef.current = audioContext;
-      analyserRef.current = analyser;
-
+    if (vadRef.current) {
+      console.log('[VAD] VAD already exists, starting...');
+      vadRef.current.start();
       setIsListening(true);
-    } catch (error) {
-      console.error('Error accessing microphone:', error);
-      throw error;
+      return;
     }
-  }, []);
+
+    isInitializingRef.current = true;
+    console.log('[VAD] Creating new MicVAD instance...');
+
+    try {
+      const baseUrl = import.meta.env.BASE_URL || '/';
+
+      const vad = await MicVAD.new({
+        baseAssetPath: baseUrl,
+        onnxWASMBasePath: baseUrl,
+        positiveSpeechThreshold,
+        negativeSpeechThreshold,
+        minSpeechFrames,
+        preSpeechPadFrames,
+        redemptionFrames,
+
+        onSpeechStart: () => {
+          console.log('[VAD] Speech started');
+          setIsRecording(true);
+        },
+
+        onSpeechEnd: (audio) => {
+          console.log('[VAD] Speech ended, samples:', audio.length);
+          setIsRecording(false);
+
+          const wavBlob = float32ArrayToWavBlob(audio);
+          console.log('[VAD] WAV blob size:', wavBlob.size);
+
+          if (wavBlob.size > 1000 && onRecordingCompleteRef.current) {
+            onRecordingCompleteRef.current(wavBlob);
+          } else {
+            console.log('[VAD] Audio too short, ignoring');
+          }
+        },
+
+        onVADMisfire: () => {
+          console.log('[VAD] Misfire - speech was too short');
+          setIsRecording(false);
+        },
+      });
+
+      vadRef.current = vad;
+      vad.start();
+      setIsListening(true);
+      console.log('[VAD] Started successfully');
+
+    } catch (error) {
+      console.error('[VAD] Error creating MicVAD:', error);
+      throw error;
+    } finally {
+      isInitializingRef.current = false;
+    }
+  }, [float32ArrayToWavBlob, positiveSpeechThreshold, negativeSpeechThreshold, minSpeechFrames, preSpeechPadFrames, redemptionFrames]);
 
   const stopListening = useCallback(() => {
+    console.log('[VAD] Stopping...');
+
+    if (vadRef.current) {
+      vadRef.current.pause();
+    }
+
     setIsListening(false);
+    setIsRecording(false);
+    setCurrentVolume(0);
+  }, []);
 
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
-
-    stopRecording();
-
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-
-    if (audioContextRef.current) {
-      try {
-        audioContextRef.current.close();
-      } catch (e) {
-        console.warn('[VOICE] AudioContext close failed:', e.message);
-      }
-      audioContextRef.current = null;
-    }
-
-    analyserRef.current = null;
-  }, [stopRecording]);
-
+  // Cleanup on unmount - destroy VAD completely
   useEffect(() => {
-    if (isListening && !isCheckingRef.current) {
-      isCheckingRef.current = true;
-      checkAudioLevel();
-    }
-
     return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
+      console.log('[VAD] Cleanup - destroying VAD');
+      if (vadRef.current) {
+        vadRef.current.pause();
+        vadRef.current.destroy();
+        vadRef.current = null;
       }
-      // NU anulam silenceTimerRef aici - el trebuie sa persiste intre re-render-uri
-      // Timer-ul va fi anulat in stopListening sau stopRecording
-      isCheckingRef.current = false;
     };
-  }, [isListening, checkAudioLevel]);
+  }, []);
 
   return {
     isListening,

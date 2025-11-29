@@ -16,7 +16,8 @@ const preloadVideo = (videoName) => {
 };
 
 // Preload video-uri principale la incarcarea modulului
-['listening', 'speaking', 'speaking_normal', 'speaking_amused', 'speaking_amazed', 'laughing', 'amazed'].forEach(preloadVideo);
+// Nota: speaking_amused si speaking_amazed folosesc speaks.mp4 (fallback), deci nu le preincarcam separat
+['listening', 'speaking', 'speaking_normal', 'laughing', 'amazed'].forEach(preloadVideo);
 
 export const VideoPlayer = ({ currentVideo, onVideoEnd, onPlay, onStop, className = '', testMode = false, onTestVideoChange }) => {
   const videoRef = useRef(null);
@@ -44,8 +45,7 @@ export const VideoPlayer = ({ currentVideo, onVideoEnd, onPlay, onStop, classNam
     } else if (currentVideo === 'listening') {
       preloadVideo('speaking');
       preloadVideo('speaking_normal');
-      preloadVideo('speaking_amused');
-      preloadVideo('speaking_amazed');
+      // speaking_amused si speaking_amazed folosesc speaks.mp4 (deja preincarcat ca speaking)
       preloadVideo('kids_list');
       preloadVideo('elfs_working');
     } else if (currentVideo === 'speaking' || currentVideo.startsWith('speaking_')) {
@@ -82,7 +82,9 @@ export const VideoPlayer = ({ currentVideo, onVideoEnd, onPlay, onStop, classNam
     // Configurăm video-ul
     videoElement.src = config.src;
     videoElement.loop = config.loop;
-    videoElement.muted = false; // Toate video-urile au sunet
+    // Video-urile loop (speaking, listening) sunt muted pentru ca TTS-ul e redat separat
+    // Video-urile non-loop (intro, elfs_working, kids_list, flight, polulnord) au sunet propriu
+    videoElement.muted = config.loop;
 
     // Handler pentru metadata (pentru debug)
     const handleLoadedMetadata = () => {

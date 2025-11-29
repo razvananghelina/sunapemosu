@@ -1,0 +1,30 @@
+# MIME types for ONNX Runtime and VAD files
+/*.mjs
+  Content-Type: application/javascript
+
+/*.wasm
+  Content-Type: application/wasm
+
+/*.onnx
+  Content-Type: application/octet-stream
+
+/ort-wasm-simd-threaded.mjs
+  Content-Type: application/javascript
+
+/ort-wasm-simd-threaded.asyncify.mjs
+  Content-Type: application/javascript
+
+/ort-wasm-simd-threaded.jsep.mjs
+  Content-Type: application/javascript
+
+/ort.wasm.min.mjs
+  Content-Type: application/javascript
+
+/ort.min.mjs
+  Content-Type: application/javascript
+
+/ort.all.min.mjs
+  Content-Type: application/javascript
+
+/vad.worklet.bundle.min.js
+  Content-Type: application/javascript

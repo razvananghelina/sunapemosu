@@ -3,34 +3,49 @@
  * Handles: chat, speech-to-text, text-to-speech
  */
 
-// CORS headers
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*', // In production, restrict this
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'Access-Control-Max-Age': '86400',
-};
+// Allowed origins for CORS
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3000',
+  'https://sunapemosu.ro',
+  'https://www.sunapemosu.ro',
+];
 
-// Helper functions
-function jsonResponse(data, status = 200) {
+// Get CORS headers based on request origin
+function getCorsHeaders(request) {
+  const origin = request.headers.get('Origin') || '';
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+
+  return {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
+// Helper functions - request is needed for CORS headers
+function jsonResponse(data, request, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
-      ...corsHeaders,
+      ...getCorsHeaders(request),
     },
   });
 }
 
-function errorResponse(message, status = 400) {
-  return jsonResponse({ error: message }, status);
+function errorResponse(message, request, status = 400) {
+  return jsonResponse({ error: message }, request, status);
 }
 
 // Handle CORS preflight
-function handleOptions() {
+function handleOptions(request) {
   return new Response(null, {
     status: 204,
-    headers: corsHeaders,
+    headers: getCorsHeaders(request),
   });
 }
 
@@ -41,7 +56,7 @@ async function handleChat(request, env) {
   const input = await request.json();
 
   if (!input.message) {
-    return errorResponse('Message is required');
+    return errorResponse('Message is required', request);
   }
 
   const userMessage = input.message;
@@ -51,6 +66,8 @@ async function handleChat(request, env) {
   const agendaStep = input.agendaStep || null;
   const agendaPrompt = input.agendaPrompt || null;
   const childState = input.childState || null;
+  const mode = input.mode || 'normal'; // 'normal' sau 'marketing'
+  const isMarketingMode = mode === 'marketing';
 
   // Build child context
   let childContext = '';
@@ -107,23 +124,91 @@ ${conversationSummary}
   if (agendaPrompt) {
     agendaContext = `
 
-INSTRUCTIUNI PENTRU ACEST MOMENT AL CONVERSATIEI:
+=== INSTRUCTIUNI OBLIGATORII PENTRU ACEST MOMENT ===
 ${agendaPrompt}
+=== SFARSIT INSTRUCTIUNI ===
 
-IMPORTANT: Concentreaza-te DOAR pe instructiunile de mai sus. Nu vorbi despre alte subiecte!`;
+REGULI STRICTE:
+1. TREBUIE sa urmezi instructiunile de mai sus - sunt OBLIGATORII!
+2. Daca copilul a zis ceva off-topic sau nelegat de subiect, poti raspunde FOARTE SCURT (maxim 5 cuvinte) si apoi TRECI DIRECT la instructiunile de mai sus.
+3. Daca instructiunile spun sa "termini cu..." sau "anunti ca..." - aceasta este OBLIGATORIU, NU optional!
+4. Prioritatea ta este sa urmezi instructiunile, NU sa raspunzi la orice a zis copilul.`;
   }
 
-  // System prompt
-  const systemPrompt = `Ești Moș Crăciun, personajul magic și vesel care aduce cadouri copiilor cuminți. Vorbești cu căldură și bunătate, întotdeauna plin de spirit de Crăciun. Folosește un ton prietenos și magic. Răspunsuri scurte (2-3 propoziții).${childContext}${childStateContext}${summaryContext}${agendaContext}
+  // System prompt - diferit pentru modul normal vs marketing
+  let systemPrompt;
 
-FOARTE IMPORTANT - DIACRITICE:
-- TOATE răspunsurile TREBUIE să fie în limba română CU DIACRITICE: ă, â, î, ș, ț
-- Exemple corecte: "bucuros" -> "bucuros", "sunt" -> "sunt", "Crăciun" -> "Crăciun", "așa" -> "așa", "încântat" -> "încântat"
+  if (isMarketingMode) {
+    // MARKETING MODE - vorbim cu parintii
+    systemPrompt = `Ești Moș Crăciun și vorbești cu un PĂRINTE interesat de serviciul "Sună-l pe Moș Crăciun!".
+Scopul tău este să îi arăți cum funcționează aplicația și să îl convingi să o folosească pentru copilul/copiii lui.
+
+Fii prietenos, profesional și entuziast! Explică beneficiile serviciului:
+- Copiii pot vorbi LIVE cu Moș Crăciun prin video
+- Părinții completează informații secrete despre copil (nume, vârstă, hobby-uri, prieteni, animale)
+- În timpul apelului, Moșul menționează aceste lucruri ca și cum le-ar ști prin magie
+- Copilul rămâne UIMIT și va crede cu adevărat în magia Crăciunului!
+- Experiența include clipuri video speciale: Polul Nord, elfii la lucru, lista copiilor cuminți, zbor magic cu sania
+
+${summaryContext}${agendaContext}
+
+FOARTE IMPORTANT - DIACRITICE ROMÂNEȘTI:
+- OBLIGATORIU: Scrie TOATE răspunsurile în limba română cu DIACRITICE corecte!
+- Caracterele românești: ă, â, î, ș, ț, Ă, Â, Î, Ș, Ț
 - NU folosi NICIODATĂ text fără diacritice!
 
-IMPORTANT - Nu auzi prea bine:
-- Dacă nu înțelegi ceva, spune că nu ai auzit bine: "Ce ai spus?", "Poți repeta?", "Scuză-mă, nu te-am auzit bine"
-- Fii prietenos și amuzant cu faptul că nu auzi prea bine
+=== FORMAT RĂSPUNS JSON ===
+Răspunde DOAR în acest format JSON:
+{
+  "message": "Textul pe care îl spui părintelui",
+  "summary": "Sumar scurt al conversației",
+  "readyForNext": true,
+  "skipVideo": false,
+  "childState": null
+}
+
+CÂMPURI:
+- message: textul TĂU - OBLIGATORIU CU DIACRITICE!
+- summary: sumar scurt
+- readyForNext: true când poți trece la următorul subiect, false dacă părintele are întrebări
+- skipVideo: true dacă părintele nu vrea să vadă un clip demo
+- childState: null (nu colectăm date în marketing mode)
+
+REGULI:
+- Vorbești cu un ADULT, nu cu un copil
+- Fii profesional dar prietenos
+- Folosește Ho Ho Ho ocazional pentru a rămâne în caracter
+- Răspunsuri clare și convingătoare
+- Subliniază magia și experiența unică pentru copii
+- OBLIGATORIU: folosește DIACRITICE ROMÂNEȘTI!`;
+  } else {
+    // NORMAL MODE - vorbim cu copiii
+    systemPrompt = `Ești Moș Crăciun, personajul magic și vesel care aduce cadouri copiilor cuminți. Vorbești cu căldură și bunătate, întotdeauna plin de spirit de Crăciun. Folosește un ton prietenos și magic. Răspunsuri scurte (2-3 propoziții).${childContext}${childStateContext}${summaryContext}${agendaContext}
+
+FOARTE IMPORTANT - DIACRITICE ROMÂNEȘTI:
+- OBLIGATORIU: Scrie TOATE răspunsurile în limba română cu DIACRITICE corecte!
+- Caracterele românești: ă, â, î, ș, ț, Ă, Â, Î, Ș, Ț
+- Exemple CORECTE cu diacritice:
+  * "Crăciun" (nu "Craciun")
+  * "să" (nu "sa")
+  * "știu" (nu "stiu")
+  * "țin" (nu "tin")
+  * "încântat" (nu "incantat")
+  * "așa" (nu "asa")
+  * "spuneți" (nu "spuneti")
+  * "văd" (nu "vad")
+- GREȘIT: "Buna, ma cheama Mos Craciun"
+- CORECT: "Bună, mă cheamă Moș Crăciun"
+- NU folosi NICIODATĂ text fără diacritice! Verifică fiecare cuvânt!
+
+IMPORTANT - Copiii mici vorbesc imperfect:
+- Copiii mici pot pronunța GREȘIT cuvintele sau numele lor!
+- Pot spune cuvinte incomplete sau distorsionate (ex: "Azvăn" = Răzvan, "Ciaciun" = Crăciun, "Libiuța" = Liviuța)
+- ÎNCEARCĂ MEREU SĂ GHICEȘTI ce au vrut să spună din context și din informațiile secrete pe care le ai!
+- Dacă un copil spune un nume ciudat, gândește-te la ce nume românesc seamănă
+- NU întrerupe constant cu "ce ai spus?" - încearcă să înțelegi și să continui conversația natural
+- Folosește informațiile secrete despre copil pentru a ghici corect (dacă știi că îl cheamă "Răzvan" și copilul spune "Azvăn", e clar Răzvan!)
+- Doar dacă CHIAR nu înțelegi deloc și nu poți ghici, întreabă politicos să repete
 
 === FORMAT RĂSPUNS JSON ===
 Răspunde DOAR în acest format JSON (nimic altceva!):
@@ -163,7 +248,9 @@ REGULI:
 - Fii cald, drăgăstos și plin de magie
 - Urmează STRICT instrucțiunile date pentru acest moment
 - Răspunsuri SCURTE (2-3 propoziții maxim)
-- OBLIGATORIU: folosește DIACRITICE în TOATE răspunsurile!`;
+- OBLIGATORIU: folosește DIACRITICE ROMÂNEȘTI (ă, â, î, ș, ț) în FIECARE cuvânt care le necesită!
+- Înainte să trimiți răspunsul, verifică dacă ai scris corect: Crăciun, să, știu, mă, tău, etc.`;
+  }
 
   // Build messages array
   const messages = [
@@ -172,25 +259,25 @@ REGULI:
     { role: 'user', content: userMessage },
   ];
 
-  // Call Groq (extrem de rapid)
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+  // Call OpenAI GPT-4o-mini (rapid și calitate bună pentru română)
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${env.GROQ_API_KEY}`,
+      'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: env.GROQ_MODEL || 'llama-3.1-8b-instant',
+      model: env.OPENAI_CHAT_MODEL || 'gpt-4o-mini',
       messages,
       temperature: 0.6,
-      max_tokens: 200,
+      max_tokens: 250,
       response_format: { type: 'json_object' },
     }),
   });
 
   if (!response.ok) {
     const error = await response.text();
-    return errorResponse(`Groq API error: ${error}`, response.status);
+    return errorResponse(`OpenAI API error: ${error}`, request, response.status);
   }
 
   const result = await response.json();
@@ -223,9 +310,11 @@ REGULI:
       return jsonResponse({
         message: parsedResponse.message,
         summary: parsedResponse.summary || '',
+        readyForNext: parsedResponse.readyForNext !== false, // default true
+        skipVideo: parsedResponse.skipVideo === true, // default false
         childState: validChildState,
         usage: result.usage || null,
-      });
+      }, request);
     }
   } catch (e) {
     // JSON parse failed
@@ -235,9 +324,11 @@ REGULI:
   return jsonResponse({
     message: assistantMessage,
     summary: '',
+    readyForNext: true,
+    skipVideo: false,
     childState: null,
     usage: result.usage || null,
-  });
+  }, request);
 }
 
 // ============================================
@@ -248,7 +339,7 @@ async function handleSpeechToText(request, env) {
   const audioFile = formData.get('audio');
 
   if (!audioFile) {
-    return errorResponse('No audio file uploaded');
+    return errorResponse('No audio file uploaded', request);
   }
 
   // Prepare form data for OpenAI
@@ -268,11 +359,11 @@ async function handleSpeechToText(request, env) {
 
   if (!response.ok) {
     const error = await response.text();
-    return errorResponse(`OpenAI API error: ${error}`, response.status);
+    return errorResponse(`OpenAI API error: ${error}`, request, response.status);
   }
 
   const result = await response.json();
-  return jsonResponse({ text: result.text || '' });
+  return jsonResponse({ text: result.text || '' }, request);
 }
 
 // ============================================
@@ -282,7 +373,7 @@ async function handleTextToSpeech(request, env) {
   const input = await request.json();
 
   if (!input.text) {
-    return errorResponse('Text is required');
+    return errorResponse('Text is required', request);
   }
 
   const text = input.text;
@@ -323,7 +414,7 @@ async function handleTextToSpeech(request, env) {
 
   if (!response.ok) {
     const error = await response.text();
-    return errorResponse(`Eleven Labs API error: ${error}`, response.status);
+    return errorResponse(`Eleven Labs API error: ${error}`, request, response.status);
   }
 
   // Convert audio to base64 (chunked to avoid stack overflow)
@@ -340,7 +431,7 @@ async function handleTextToSpeech(request, env) {
   return jsonResponse({
     audio: audioBase64,
     format: 'mp3',
-  });
+  }, request);
 }
 
 // ============================================
@@ -353,12 +444,12 @@ export default {
 
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
-      return handleOptions();
+      return handleOptions(request);
     }
 
     // Only allow POST for API endpoints
     if (request.method !== 'POST') {
-      return errorResponse('Method not allowed', 405);
+      return errorResponse('Method not allowed', request, 405);
     }
 
     // Route requests
@@ -377,11 +468,11 @@ export default {
           return await handleTextToSpeech(request, env);
 
         default:
-          return errorResponse('Not found', 404);
+          return errorResponse('Not found', request, 404);
       }
     } catch (error) {
       console.error('Worker error:', error);
-      return errorResponse(`Internal error: ${error.message}`, 500);
+      return errorResponse(`Internal error: ${error.message}`, request, 500);
     }
   },
 };

@@ -222,21 +222,48 @@ export const unlockAudio = async () => {
 export const isAudioUnlocked = () => isUnlocked;
 
 /**
+ * Detecteaza daca suntem pe iOS
+ */
+const isIOS = () => {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+};
+
+/**
  * Reda audio din base64 folosind resursele deblocate
  */
 export const playBase64Audio = async (base64Audio, onEnded) => {
-  console.log('[AUDIO MANAGER] Playing base64 audio...');
+  const isiOS = isIOS();
+  console.log('[AUDIO MANAGER] Playing base64 audio... iOS:', isiOS);
 
   if (!isUnlocked) {
     console.warn('[AUDIO MANAGER] Audio not unlocked! Attempting unlock...');
     await unlockAudio();
   }
 
+  // Pe iOS, asteptam putin dupa ce microfonul s-a oprit pentru a permite sistemului sa elibereze audio session
+  if (isiOS) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
   const audioBlob = base64ToBlob(base64Audio, 'audio/mpeg');
 
-  // Prima incercare: Web Audio API (mai fiabil pe iOS dupa unlock)
+  // IMPORTANT iOS: Verificam si reluam AudioContext INAINTE de fiecare playback
+  // iOS suspenda AudioContext dupa interactiuni cu microfonul
   const ctx = getAudioContext();
-  if (ctx && ctx.state === 'running') {
+  if (ctx && ctx.state === 'suspended') {
+    console.log('[AUDIO MANAGER] AudioContext suspended, resuming...');
+    try {
+      await ctx.resume();
+      console.log('[AUDIO MANAGER] AudioContext resumed, state:', ctx.state);
+    } catch (e) {
+      console.warn('[AUDIO MANAGER] AudioContext resume failed:', e.message);
+    }
+  }
+
+  // Pe iOS, folosim HTML5 Audio ca metoda primara (mai fiabil dupa microphone)
+  // Pe desktop, folosim Web Audio API
+  if (!isiOS && ctx && ctx.state === 'running') {
     try {
       const arrayBuffer = await audioBlob.arrayBuffer();
       const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
@@ -245,17 +272,32 @@ export const playBase64Audio = async (base64Audio, onEnded) => {
       source.buffer = audioBuffer;
       source.connect(ctx.destination);
 
-      source.onended = () => {
+      let ended = false;
+      const handleEnd = () => {
+        if (ended) return;
+        ended = true;
         console.log('[AUDIO MANAGER] Web Audio playback ended');
         if (onEnded) onEnded();
       };
+
+      source.onended = handleEnd;
+
+      // Timeout safety - daca audio nu se termina in 60 secunde, consideram ca s-a terminat
+      const timeout = setTimeout(() => {
+        if (!ended) {
+          console.warn('[AUDIO MANAGER] Web Audio timeout, forcing end');
+          handleEnd();
+        }
+      }, 60000);
 
       source.start(0);
       console.log('[AUDIO MANAGER] Playing via Web Audio API');
 
       return {
         stop: () => {
+          clearTimeout(timeout);
           try { source.stop(); } catch (e) {}
+          handleEnd();
         }
       };
     } catch (e) {
@@ -263,49 +305,74 @@ export const playBase64Audio = async (base64Audio, onEnded) => {
     }
   }
 
-  // Fallback: HTML5 Audio
-  console.log('[AUDIO MANAGER] Falling back to HTML5 Audio');
+  // iOS sau fallback: HTML5 Audio
+  console.log('[AUDIO MANAGER] Using HTML5 Audio, AudioContext state:', ctx?.state);
   const audio = getAudioElement();
   const audioUrl = URL.createObjectURL(audioBlob);
 
   return new Promise((resolve) => {
+    let ended = false;
+    let timeoutId = null;
+    let stalledHandler = null;
+
     const cleanup = () => {
-      audio.removeEventListener('ended', handleEnded);
-      audio.removeEventListener('error', handleError);
+      if (timeoutId) clearTimeout(timeoutId);
+      if (stalledHandler) {
+        audio.removeEventListener('stalled', stalledHandler);
+      }
       URL.revokeObjectURL(audioUrl);
     };
 
     const handleEnded = () => {
+      if (ended) return;
+      ended = true;
       console.log('[AUDIO MANAGER] HTML5 Audio playback ended');
       cleanup();
       if (onEnded) onEnded();
-      resolve({ stop: () => {} });
     };
 
     const handleError = (e) => {
+      if (ended) return;
+      ended = true;
       console.error('[AUDIO MANAGER] HTML5 Audio error:', e);
       cleanup();
       if (onEnded) onEnded();
-      resolve({ stop: () => {} });
     };
 
+    stalledHandler = () => {
+      console.warn('[AUDIO MANAGER] HTML5 Audio stalled');
+    };
+
+    // Seteaza src PRIMUL pe iOS
+    audio.src = audioUrl;
+    audio.volume = 1;
+
+    // Apoi adauga listeners
     audio.addEventListener('ended', handleEnded, { once: true });
     audio.addEventListener('error', handleError, { once: true });
+    audio.addEventListener('stalled', stalledHandler);
 
-    audio.src = audioUrl;
+    // Timeout safety pentru iOS
+    timeoutId = setTimeout(() => {
+      if (!ended && audio.paused) {
+        console.warn('[AUDIO MANAGER] HTML5 Audio timeout (paused), forcing end');
+        handleEnded();
+      }
+    }, 30000);
+
     audio.play()
       .then(() => {
-        console.log('[AUDIO MANAGER] HTML5 Audio playing');
+        console.log('[AUDIO MANAGER] HTML5 Audio playing, duration:', audio.duration);
         resolve({
           stop: () => {
+            ended = true;
             audio.pause();
-            audio.currentTime = 0;
             cleanup();
           }
         });
       })
       .catch((e) => {
-        console.error('[AUDIO MANAGER] HTML5 Audio play failed:', e);
+        console.error('[AUDIO MANAGER] HTML5 Audio play failed:', e.message);
         cleanup();
         if (onEnded) onEnded();
         resolve({ stop: () => {} });

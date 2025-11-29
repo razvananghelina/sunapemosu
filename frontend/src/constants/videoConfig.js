@@ -24,12 +24,14 @@ export const VIDEO_CONFIG = {
     description: 'Moșul vorbește normal'
   },
   speaking_amused: {
-    src: getVideoUrl('speaks_amused.mp4'),
+    // Fallback to speaks.mp4 since speaks_amused.mp4 might be missing
+    src: getVideoUrl('speaks.mp4'),
     loop: true,
     description: 'Moșul vorbește amuzat'
   },
   speaking_amazed: {
-    src: getVideoUrl('speaks_amazed.mp4'),
+    // Fallback to speaks.mp4 since speaks_amazed.mp4 is missing
+    src: getVideoUrl('speaks.mp4'),
     loop: true,
     description: 'Moșul vorbește uimit'
   },

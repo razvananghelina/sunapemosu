@@ -1,3 +1,8 @@
+# MIME types for ONNX Runtime WebAssembly and VAD
+AddType application/javascript .mjs
+AddType application/wasm .wasm
+AddType application/octet-stream .onnx
+
 # SPA routing - redirect all requests to index.html
 <IfModule mod_rewrite.c>
   RewriteEngine On

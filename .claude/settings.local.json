@@ -5,7 +5,8 @@
       "Bash(npm create:*)",
       "Bash(npm install:*)",
       "Bash(npm run dev:*)",
-      "Bash(del \"D:\\mesaj_de_la_mosul\\sunapemosu\\frontend\\public\\coming-soon.html\")"
+      "Bash(del \"D:\\mesaj_de_la_mosul\\sunapemosu\\frontend\\public\\coming-soon.html\")",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []
